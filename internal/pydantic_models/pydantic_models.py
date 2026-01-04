@@ -14,6 +14,18 @@ class Quest(BaseModel):
 class AddQuestsRequest(BaseModel):
     quests: List[Quest]
 
+# Users
+# ---->
+class User(BaseModel):
+    user_id: int
+    quest_ids: List[int]
+
+
+class AddUsersRequest(BaseModel):
+    users: List[User]
+
+# <----
+
 
 class SearchRequest(BaseModel):
     query: str
@@ -30,6 +42,17 @@ class SearchResponse(BaseModel):
 class SimilarQuestsRequest(BaseModel):
     quest_id: int
     top_k: int = 5
+
+
+class RecommendQuestsRequest(BaseModel):
+    user_quest_ids: List[int] # ID квестов, которые уже есть у пользователя
+    top_k: int = 10
+    category: Optional[str] = None # Опциональная фильтрация по категории
+
+
+class RecommendUsersRequest(BaseModel):
+    user_id: int  # можем quests_ids не указывать
+    top_k: int = 10
 
 
 class HealthResponse(BaseModel):

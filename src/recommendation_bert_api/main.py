@@ -1,4 +1,6 @@
 # bert_api/main.py
+import http.client
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sentence_transformers import SentenceTransformer, util
@@ -11,6 +13,7 @@ from contextlib import asynccontextmanager
 
 # Настройка логирования
 from internal.pydantic_models.pydantic_models import *
+from src.recommendation_bert_api.routes_utils import _get_recommendation_explanation
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,6 +33,10 @@ async def lifespan(app: FastAPI):
     # Кэш эмбеддингов квестов
     app.state.quest_embeddings = {}
     app.state.quests_data = {}
+
+    # Кэш эмбеддингов пользователей
+    app.state.users_data = {} # k : user_id, v : dict(user_id, [quest_id_1, quest_id_2, ..., quest_id_n])
+    app.state.profile_embeddings = {} # k : user_id, v : profile_embeddings - то есть mean-всех эмбеддингов квестов этого пользователя
 
     yield
 
@@ -87,6 +94,72 @@ async def add_quests(request: AddQuestsRequest):
 
     except Exception as e:
         logger.error(f"Ошибка добавления квестов: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/users/add")
+async def add_users(request: AddUsersRequest):
+    """Добавление пользователей с их quest_ids в кеш + создание эмбеддингов"""
+    try:
+        for user in request.users:
+            user_id = user.user_id
+
+            if user_id in app.state.users_data:
+                existing_user = app.state.users_data[user_id]
+                existing_quest_ids = existing_user.get("quest_ids", [])
+
+                # Если квесты одинаковые - пропускаем
+                if sorted(existing_quest_ids) == sorted(user.quest_ids):
+                    logger.info(f"Пользователь {user_id} уже существует с такими же quest_ids, пропускаем")
+                    continue
+                else:
+                    # Квесты изменились - обновляем
+                    logger.info(f"Пользователь {user_id} существует, но quest_ids изменились. Обновляем.")
+
+            app.state.users_data[user_id] = {
+                "user_id": user_id,
+                "quest_ids": user.quest_ids
+            }
+
+            # Если у пользователя есть квесты - создаем/обновляем профиль
+            if user.quest_ids:
+                user_embeddings = []
+                valid_quests = []
+
+                # Собираем эмбеддинги существующих квестов
+                for quest_id in user.quest_ids:
+                    if quest_id in app.state.quest_embeddings:
+                        user_embeddings.append(app.state.quest_embeddings[quest_id])
+                        valid_quests.append(quest_id)
+
+                # Обновляем список квестов пользователя только валидными (по логике такая ситуация никогда не произойдет)
+                if len(valid_quests) != len(user.quest_ids):
+                    app.state.users_data[user_id]["quest_ids"] = valid_quests
+                    logger.warning(f"У пользователя {user_id} найдено {len(valid_quests)} из {len(user.quest_ids)} квестов")
+
+                # Если пустой список - пропускаем
+                if len(user_embeddings) == 0:
+                    continue
+
+                try:
+                    # Усредняем эмбеддинги (mean pooling) - Преобразуем список тензоров в один тензор
+                    user_embeddings_tensor = torch.stack(user_embeddings)
+                    user_profile_embedding = torch.mean(user_embeddings_tensor, dim=0)
+                    app.state.profile_embeddings[user_id] = user_profile_embedding
+
+                except Exception as e:
+                    logger.error(f"Ошибка создания профиля для пользователя {user_id}: {e}")
+                    raise HTTPException(status_code=500, detail=str(e))
+
+        return {
+            "status": "success",
+            "total_users": len(app.state.users_data),
+            "total_profiles": len(app.state.profile_embeddings),
+            "message": f"Обработано {len(request.users)} пользователей"
+        }
+
+    except Exception as e:
+        logger.error(f"Ошибка добавления пользователя: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -173,33 +246,121 @@ async def find_similar(request: SimilarQuestsRequest):
         logger.error(f"Ошибка поиска похожих: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/api/quests/recommend")
+async def recommend_quests(request: RecommendQuestsRequest):
+    """Рекомендации квестов на основе истории пользователя"""
+    try:
+        # Получаем ID квестов пользователя из go-backend (их достает из БД)
+        # user_quest_ids = [1, 3, 5, 8] - ID квестов, которые у пользователя уже есть
 
-@app.get("/api/health")
-async def health() -> HealthResponse:
-    """Проверка здоровья API"""
-    return HealthResponse(
-        status="healthy",
-        model="paraphrase-multilingual-MiniLM-L12-v2",
-        device=app.state.device,
-        quests_count=len(app.state.quest_embeddings)
-    )
+        if not request.user_quest_ids:
+            return {"recommendations": [], "message": "У пользователя нет квестов для рекомендаций"}
+
+        # 1. Получаем эмбеддинги квестов пользователя
+        user_embeddings = []
+        for quest_id in request.user_quest_ids:
+            if quest_id in app.state.quest_embeddings:
+                user_embeddings.append(app.state.quest_embeddings[quest_id])
+
+        if not user_embeddings:
+            return {"recommendations": [], "message": "Не найдены эмбеддинги для квестов пользователя"}
+
+        # 2. Усредняем эмбеддинги (mean pooling)
+        # Преобразуем список тензоров в один тензор
+        user_embeddings_tensor = torch.stack(user_embeddings)
+        user_profile_embedding = torch.mean(user_embeddings_tensor, dim=0)
+
+        # 3. Ищем похожие квесты (которые пользователь еще не имеет)
+        results = []
+        for quest_id, quest_embedding in app.state.quest_embeddings.items():
+            # Пропускаем квесты, которые уже есть у пользователя
+            if quest_id in request.user_quest_ids:
+                continue
+
+            # Фильтр по категории, если указана
+            if request.category:
+                quest_data = app.state.quests_data.get(quest_id)
+                if quest_data and quest_data.get('category') != request.category:
+                    continue
+
+            # Вычисляем схожесть с профилем пользователя
+            score = util.cos_sim(user_profile_embedding, quest_embedding).item()
+
+            if score > 0.2:  # Порог можно настроить
+                quest_data = app.state.quests_data.get(quest_id, {})
+                results.append({
+                    **quest_data,
+                    "similarity_score": float(score),
+                    "id": quest_id
+                })
+
+        # 4. Сортируем и возвращаем топ-K
+        results.sort(key=lambda x: x["similarity_score"], reverse=True)
+
+        # 5. Добавляем объяснения рекомендаций
+        enhanced_results = []
+        for result in results[:request.top_k]:
+            explanation = _get_recommendation_explanation(
+                result,
+                request.user_quest_ids,
+                app.state.quests_data
+            )
+            result["explanation"] = explanation
+            enhanced_results.append(result)
+
+        return {
+            "recommendations": enhanced_results,
+            "user_profile_info": {
+                "quests_count": len(request.user_quest_ids),
+                "embedding_dim": user_profile_embedding.shape[0],
+                "method": "mean_pooling"
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Ошибка рекомендаций: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.get("/api/stats")
-async def get_stats():
-    """Статистика"""
-    if torch.cuda.is_available():
-        torch.cuda.synchronize()
-        memory_allocated = torch.cuda.memory_allocated() / 1024 ** 2
-        memory_reserved = torch.cuda.memory_reserved() / 1024 ** 2
-    else:
-        memory_allocated = memory_reserved = 0
+@app.post("/api/users/recommend")
+async def recommend_users(request: RecommendUsersRequest):
+    cur_user_id = request.user_id
+
+    if cur_user_id not in app.state.users_data:
+        raise HTTPException(status_code=http.client.BAD_REQUEST,
+                            detail=f"user (with user_id={cur_user_id} not found in data")
+
+    if cur_user_id not in app.state.profile_embeddings:
+        raise HTTPException(status_code=http.client.INTERNAL_SERVER_ERROR,
+                            detail=f"user (with user_id={cur_user_id}) profile_embedding not found in data")
+
+    cur_user_profile_embedding = app.state.profile_embeddings[cur_user_id]
+
+    results = []
+
+    for user_id, profile_embedding in app.state.profile_embeddings.items():
+        # пропускаем для самого себя
+        if user_id == cur_user_id:
+            continue
+
+        score = util.cos_sim(cur_user_profile_embedding, profile_embedding).item()
+
+        if score > 0.2:  # Порог можно настроить
+            results.append({
+                "user_id": user_id,
+                "similarity_score": float(score)
+            })
+
+    # Сортируем и возвращаем топ-K
+    results.sort(key=lambda x: x["similarity_score"], reverse=True)
+
+    top_k = min(max(request.top_k, 1), len(results)) # от 1 до len(results)
+    top_k_results = results[:top_k]
 
     return {
-        "quests_count": len(app.state.quest_embeddings),
-        "embedding_dimension": 384,  # для выбранной модели
-        "gpu_memory_allocated_mb": round(memory_allocated, 2),
-        "gpu_memory_reserved_mb": round(memory_reserved, 2)
+        "status": "success",
+        "user_id": cur_user_id,
+        "results": top_k_results
     }
 
 
