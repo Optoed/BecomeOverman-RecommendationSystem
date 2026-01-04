@@ -12,6 +12,9 @@ import logging
 from contextlib import asynccontextmanager
 
 # Настройка логирования
+import psycopg2
+from tqdm import tqdm
+
 from internal.pydantic_models.pydantic_models import *
 from internal.repo.db import SQLiteBlobStorage
 from src.recommendation_bert_api.routes_utils import _get_recommendation_explanation
@@ -109,7 +112,7 @@ async def add_quests(request: AddQuestsRequest):
         logger.info(f"Добавлено в кеш {len(request.quests)} квестов")
 
         for quest in request.quests:
-            storage.save_quest(app.state.quests_data[quest.id], app.state.quest_embeddings[quest.id])
+            storage.save_quest(quest, app.state.quest_embeddings[quest.id])
             logger.info(f"Добавлен квест в БД {quest}")
 
         return {"status": "success", "added": len(request.quests)}
@@ -161,6 +164,7 @@ async def add_users(request: AddUsersRequest):
 
                 # Если пустой список - пропускаем
                 if len(user_embeddings) == 0:
+                    logger.warning(f"У пользователя {user_id} нет валидных эмбеддингов квестов")
                     continue
 
                 try:
@@ -387,6 +391,154 @@ async def recommend_users(request: RecommendUsersRequest):
         "user_id": cur_user_id,
         "results": top_k_results
     }
+
+
+@app.post("/sync-db")
+async def syncDB():
+    """Простая миграция данных"""
+    try:
+        # Конфигурация PostgreSQL
+        PG_CONFIG = {
+            'host': 'localhost',
+            'port': 5432,
+            'database': 'becomeoverman',
+            'user': 'postgres',
+            'password': 'postgres'
+        }
+
+        # Подключаемся к PostgreSQL
+        logger.info("Подключаемся к PostgreSQL...")
+        conn = psycopg2.connect(**PG_CONFIG)
+        cursor = conn.cursor()
+
+        # Шаг 1: Мигрируем квесты
+        logger.info("Мигрируем квесты...")
+        cursor.execute("SELECT id, title, description, category FROM quests")
+        quests = cursor.fetchall()
+
+        for quest_id, title, description, category in tqdm(quests, desc="Квесты"):
+            # Создаем текст для эмбеддинга
+            text = f"{title}. {description or ''}"
+            if category:
+                text += f". {category}"
+
+            # Создаем эмбеддинг
+            embedding = app.state.model.encode(text, convert_to_tensor=True)
+            # Сохраняем в SQLite
+            quest = Quest(
+                id=quest_id,
+                title=title,
+                description=description,
+                category=category
+            )
+
+            storage.save_quest(quest, embedding)
+
+            # Сохраняем в кеш
+            app.state.quests_data[quest_id] = quest.dict()
+            app.state.quest_embeddings[quest_id] = embedding
+
+        # Шаг 2: сохраняем пользователей и подсчитываем их профили
+        logger.info("Мигрируем пользователей...")
+        cursor.execute("""
+            SELECT user_id,
+                COALESCE(ARRAY_AGG(quest_id), ARRAY[]::integer[]) as quest_ids
+            FROM user_quests
+            GROUP BY user_id
+        """)
+
+        user_quests_data = cursor.fetchall()
+
+        logger.info(f"Найдено {len(user_quests_data)} пользователей с квестами")
+
+        successful_users = 0
+        failed_users = 0
+
+        for user_id, quest_ids in tqdm(user_quests_data, desc="Пользователи"):
+            try:
+                user = User(
+                    user_id=user_id,
+                    quest_ids=quest_ids
+                )
+
+                # Добавляем в кеш
+                app.state.users_data[user_id] = user.dict()
+
+                user_embeddings = []
+                for quest_id in quest_ids:
+                    if quest_id in app.state.quest_embeddings:
+                        user_embeddings.append(app.state.quest_embeddings[quest_id])
+                    else:
+                        # Если квеста нет в кэше (он был удален или что-то пошло не так)
+                        logger.warning(f"Квест {quest_id} пользователя {user_id} не найден в кэше")
+                        continue
+
+                if len(user_embeddings) == 0:
+                    logger.warning(f"Пользователь {user_id} не получил профиль (нет эмбеддингов)")
+                    storage.save_user(user, None)
+                    failed_users += 1
+                    continue
+
+                # Сохраняем профиль в КЕШ
+                # Усредняем эмбеддинги (mean pooling) - Преобразуем список тензоров в один тензор
+                user_embeddings_tensor = torch.stack(user_embeddings)
+                user_profile_embedding = torch.mean(user_embeddings_tensor, dim=0)
+                app.state.profile_embeddings[user_id] = user_profile_embedding
+
+                # Сохраняем юзера и профиль в БД
+                storage.save_user(user, user_profile_embedding)
+                successful_users += 1
+
+            except Exception as e:
+                logger.error(f"Ошибка обработки пользователя {user_id}: {e}")
+                failed_users += 1
+                continue
+
+        # Закрываем соединения
+        cursor.close()
+        conn.close()
+
+        # Выводим статистику
+        stats = storage.get_stats()
+        logger.info(f"\n📊 Статистика после миграции:")
+        logger.info(f"   Квестов: {stats['quests']}")
+        logger.info(f"   Квестов с эмбеддингами: {stats['quests_with_embeddings']}")
+        logger.info(f"   Пользователей: {stats['users']}")
+        logger.info(f"   Пользователей с профилями: {stats['users_with_profiles']}")
+        logger.info(f"   Размер БД: {stats['db_size_mb']} MB")
+        logger.info(f"   Успешных профилей: {successful_users}")
+        logger.info(f"   Неудачных профилей: {failed_users}")
+
+        logger.info("\n✅ Миграция завершена!")
+
+        return {
+            "status": "success",
+            "message": "Миграция данных успешно завершена",
+            "stats": {
+                "total_quests": stats['quests'],
+                "total_users": len(user_quests_data),
+                "successful_user_profiles": successful_users,
+                "failed_user_profiles": failed_users,
+                "quests_with_embeddings": stats['quests_with_embeddings'],
+                "users_with_profiles": stats['users_with_profiles']
+            }
+        }
+
+    except psycopg2.Error as e:
+        logger.error(f"Ошибка подключения к PostgreSQL: {e}")
+        return {
+            "status": "error",
+            "message": f"Ошибка подключения к PostgreSQL: {str(e)}",
+            "error_type": "database_connection_error"
+        }
+
+    except Exception as e:
+        logger.error(f"Критическая ошибка при миграции: {e}")
+        return {
+            "status": "error",
+            "message": f"Критическая ошибка при миграции: {str(e)}",
+            "error_type": "migration_error"
+        }
 
 
 if __name__ == "__main__":

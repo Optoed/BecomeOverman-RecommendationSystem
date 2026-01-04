@@ -35,7 +35,7 @@ class SQLiteBlobStorage:
                 -- Метаданные как JSON (легко расширять)
                 title TEXT NOT NULL,
                 description TEXT NOT NULL,
-                category TEXT -- может быть пустым
+                category TEXT, -- может быть пустым
                 -- Эмбеддинг как BLOB (бинарный, компактный)
                 embedding_blob BLOB,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

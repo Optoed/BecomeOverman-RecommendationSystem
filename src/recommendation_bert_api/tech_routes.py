@@ -1,9 +1,13 @@
+import logging
+
 import torch
 from fastapi import HTTPException
 
 from internal.pydantic_models.pydantic_models import HealthResponse
 from src.recommendation_bert_api.main import app, storage
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Tech Routes
 
@@ -43,3 +47,4 @@ async def get_stats():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
