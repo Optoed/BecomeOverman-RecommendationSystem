@@ -10,7 +10,9 @@ import torch
 from torch import Tensor
 
 from internal.pydantic_models.pydantic_models import Quest, User
-from src.recommendation_bert_api.main import logger
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class SQLiteBlobStorage:
@@ -104,7 +106,7 @@ class SQLiteBlobStorage:
 
         self.conn.commit()
 
-    def get_all_users(self) -> tuple[dict[Any, dict[str, list[Any] | Any]], dict[Any, Tensor]]:
+    def get_all_users(self) -> tuple[Dict[int, Dict], Dict[int, torch.Tensor]]:
         """Получает всех пользователей"""
         cursor = self.conn.cursor()
         cursor.execute("SELECT user_id, quest_ids_json, profile_blob FROM users")
