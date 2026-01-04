@@ -13,10 +13,13 @@ from contextlib import asynccontextmanager
 
 # Настройка логирования
 from internal.pydantic_models.pydantic_models import *
+from internal.repo.db import SQLiteBlobStorage
 from src.recommendation_bert_api.routes_utils import _get_recommendation_explanation
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+storage = SQLiteBlobStorage()
 
 NLP_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 
@@ -38,10 +41,24 @@ async def lifespan(app: FastAPI):
     app.state.users_data = {} # k : user_id, v : dict(user_id, [quest_id_1, quest_id_2, ..., quest_id_n])
     app.state.profile_embeddings = {} # k : user_id, v : profile_embeddings - то есть mean-всех эмбеддингов квестов этого пользователя
 
+    # ЗАГРУЖАЕМ ДАННЫЕ ИЗ БАЗЫ ПРИ СТАРТЕ
+    logger.info("Загружаем данные из базы данных...")
+
+    app.state.quests_data, app.state.quest_embeddings = storage.get_all_quests()
+    logger.info(f"Загружено квестов: {len(app.state.quests_data)}")
+
+    app.state.users_data, app.state.profile_embeddings = storage.get_all_users()
+    logger.info(f"Загружено пользователей: {len(app.state.users_data)}")
+
+    # Статистика
+    stats = storage.get_stats()
+    logger.info(f"Статистика БД: {stats}")
+
     yield
 
-    # Очистка при выключении
+    # Закрываем БД при выключении
     logger.info("Выключаем API...")
+    storage.close()
 
 
 app = FastAPI(title="Recommendation BERT API", lifespan=lifespan)
@@ -85,11 +102,16 @@ async def add_quests(request: AddQuestsRequest):
             show_progress_bar=True
         )
 
-        # Сохраняем в кэш
+        # Сохраняем в кэш эмбеддинги
         for idx, quest in enumerate(request.quests):
             app.state.quest_embeddings[quest.id] = embeddings[idx]
 
-        logger.info(f"Добавлено {len(request.quests)} квестов")
+        logger.info(f"Добавлено в кеш {len(request.quests)} квестов")
+
+        for quest in request.quests:
+            storage.save_quest(app.state.quests_data[quest.id], app.state.quest_embeddings[quest.id])
+            logger.info(f"Добавлен квест в БД {quest}")
+
         return {"status": "success", "added": len(request.quests)}
 
     except Exception as e:
@@ -146,6 +168,9 @@ async def add_users(request: AddUsersRequest):
                     user_embeddings_tensor = torch.stack(user_embeddings)
                     user_profile_embedding = torch.mean(user_embeddings_tensor, dim=0)
                     app.state.profile_embeddings[user_id] = user_profile_embedding
+
+                    # Перезаписываем в БД
+                    storage.save_user(user, user_profile_embedding)
 
                 except Exception as e:
                     logger.error(f"Ошибка создания профиля для пользователя {user_id}: {e}")
