@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict, Any
 
 
 def _get_recommendation_explanation(recommended_quest, user_quest_ids, quests_data):

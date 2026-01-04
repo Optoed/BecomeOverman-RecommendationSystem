@@ -17,7 +17,8 @@ from tqdm import tqdm
 
 from internal.pydantic_models.pydantic_models import *
 from internal.repo.db import SQLiteBlobStorage
-from src.recommendation_bert_api.routes_utils import _get_recommendation_explanation
+from src.recommendation_bert_api.routes_utils import _get_recommendation_explanation, \
+    _get_user_recommendation_explanation
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -357,39 +358,54 @@ async def recommend_users(request: RecommendUsersRequest):
 
     if cur_user_id not in app.state.users_data:
         raise HTTPException(status_code=http.client.BAD_REQUEST,
-                            detail=f"user (with user_id={cur_user_id} not found in data")
+                            detail=f"user (with user_id={cur_user_id}) not found in data")
 
     if cur_user_id not in app.state.profile_embeddings:
         raise HTTPException(status_code=http.client.INTERNAL_SERVER_ERROR,
                             detail=f"user (with user_id={cur_user_id}) profile_embedding not found in data")
 
     cur_user_profile_embedding = app.state.profile_embeddings[cur_user_id]
+    cur_user_quests = app.state.users_data.get(cur_user_id, {}).get("quest_ids", [])
 
     results = []
 
     for user_id, profile_embedding in app.state.profile_embeddings.items():
-        # пропускаем для самого себя
+        # пропускаем самого себя
         if user_id == cur_user_id:
             continue
 
+        # Вычисляем схожесть
         score = util.cos_sim(cur_user_profile_embedding, profile_embedding).item()
 
         if score > 0.2:  # Порог можно настроить
+            other_user_quests = app.state.users_data.get(user_id, {}).get("quest_ids", [])
+
+            # Анализируем причины схожести
+            explanation = _get_user_recommendation_explanation(
+                cur_user_id=cur_user_id,
+                cur_user_quests=cur_user_quests,
+                other_user_id=user_id,
+                other_user_quests=other_user_quests,
+                similarity_score=score,
+                quests_data=app.state.quests_data
+            )
+
             results.append({
                 "user_id": user_id,
-                "similarity_score": float(score)
+                "similarity_score": float(score),
+                "explanation": explanation
             })
 
     # Сортируем и возвращаем топ-K
     results.sort(key=lambda x: x["similarity_score"], reverse=True)
-
-    top_k = min(max(request.top_k, 1), len(results)) # от 1 до len(results)
+    top_k = min(max(request.top_k, 1), len(results))
     top_k_results = results[:top_k]
 
     return {
         "status": "success",
         "user_id": cur_user_id,
-        "results": top_k_results
+        "results": top_k_results,
+        "total_users_analyzed": len(app.state.profile_embeddings) - 1  # исключая текущего
     }
 
 
