@@ -1,0 +1,137 @@
+{
+  "timestamp": "2026-01-05 22:57:33",
+  "config": {
+    "total_quests": 27,
+    "total_users": 50,
+    "test_users": 20
+  },
+  "algorithms": {
+    "Content-Based BERT": {
+      "info": {
+        "name": "Content-Based BERT",
+        "type": "content_based",
+        "model": "paraphrase-multilingual-MiniLM-L12-v2",
+        "embedding_dim": 384,
+        "description": "Контентная фильтрация на основе BERT эмбеддингов"
+      },
+      "metrics": {
+        "precision@k": 0.76,
+        "precision@k_std": 0.13564659966250536,
+        "recall@k": 0.25333333333333335,
+        "recall@k_std": 0.04521553322083511,
+        "f1@k": 0.38,
+        "f1@k_std": 0.06782329983125268,
+        "ndcg@k": 0.7834135772690771,
+        "ndcg@k_std": 0.12931730875009015,
+        "map@k": 0.6766666666666667,
+        "map@k_std": 0.17027755120521448
+      }
+    },
+    "Collaborative KNN (k=5)": {
+      "info": {
+        "name": "Collaborative KNN (k=5)",
+        "type": "collaborative",
+        "n_neighbors": 5,
+        "description": "Коллаборативная фильтрация на основе пользовательских предпочтений"
+      },
+      "metrics": {
+        "precision@k": 0.6900000000000002,
+        "precision@k_std": 0.3374907406137241,
+        "recall@k": 0.23000000000000004,
+        "recall@k_std": 0.11249691353790803,
+        "f1@k": 0.3450000000000001,
+        "f1@k_std": 0.16874537030686204,
+        "ndcg@k": 0.7314339895224251,
+        "ndcg@k_std": 0.3353255360879502,
+        "map@k": 0.6758333333333334,
+        "map@k_std": 0.3431259486932847
+      }
+    },
+    "Collaborative KNN (k=10)": {
+      "info": {
+        "name": "Collaborative KNN (k=10)",
+        "type": "collaborative",
+        "n_neighbors": 10,
+        "description": "Коллаборативная фильтрация на основе пользовательских предпочтений"
+      },
+      "metrics": {
+        "precision@k": 0.7200000000000001,
+        "precision@k_std": 0.34292856398964494,
+        "recall@k": 0.24,
+        "recall@k_std": 0.11430952132988165,
+        "f1@k": 0.36000000000000004,
+        "f1@k_std": 0.17146428199482247,
+        "ndcg@k": 0.7276573235004072,
+        "ndcg@k_std": 0.3428207547662341,
+        "map@k": 0.6696666666666665,
+        "map@k_std": 0.35185050487071606
+      }
+    },
+    "Hybrid (CB:0.6, CF:0.4)": {
+      "info": {
+        "name": "Hybrid (CB:0.6, CF:0.4)",
+        "type": "hybrid",
+        "content_weight": 0.6,
+        "collaborative_weight": 0.4,
+        "description": "Гибридный алгоритм, объединяющий контентную и коллаборативную фильтрацию"
+      },
+      "metrics": {
+        "precision@k": 0.8500000000000002,
+        "precision@k_std": 0.12449899597988731,
+        "recall@k": 0.2833333333333333,
+        "recall@k_std": 0.0414996653266291,
+        "f1@k": 0.4250000000000001,
+        "f1@k_std": 0.062249497989943656,
+        "ndcg@k": 0.871761031261542,
+        "ndcg@k_std": 0.11259216578749279,
+        "map@k": 0.8053333333333332,
+        "map@k_std": 0.16052829449456357
+      }
+    },
+    "Hybrid (CB:0.8, CF:0.2)": {
+      "info": {
+        "name": "Hybrid (CB:0.8, CF:0.2)",
+        "type": "hybrid",
+        "content_weight": 0.8,
+        "collaborative_weight": 0.2,
+        "description": "Гибридный алгоритм, объединяющий контентную и коллаборативную фильтрацию"
+      },
+      "metrics": {
+        "precision@k": 0.8400000000000001,
+        "precision@k_std": 0.11999999999999998,
+        "recall@k": 0.27999999999999997,
+        "recall@k_std": 0.039999999999999994,
+        "f1@k": 0.42000000000000004,
+        "f1@k_std": 0.05999999999999999,
+        "ndcg@k": 0.8799384795447196,
+        "ndcg@k_std": 0.09614710689083698,
+        "map@k": 0.8091666666666667,
+        "map@k_std": 0.14879469449920285
+      }
+    },
+    "Simple TF-IDF": {
+      "info": {
+        "name": "Simple TF-IDF",
+        "type": "tfidf",
+        "max_features": 1000,
+        "description": "Простой алгоритм на основе TF-IDF векторизации"
+      },
+      "metrics": {
+        "precision@k": 0.8200000000000001,
+        "precision@k_std": 0.17776388834631177,
+        "recall@k": 0.2733333333333333,
+        "recall@k_std": 0.05925462944877058,
+        "f1@k": 0.41000000000000003,
+        "f1@k_std": 0.08888194417315588,
+        "ndcg@k": 0.8405769448420196,
+        "ndcg@k_std": 0.17627468054888057,
+        "map@k": 0.7666666666666666,
+        "map@k_std": 0.22947282579376968
+      }
+    }
+  },
+  "summary": {
+    "best_algorithm": "Hybrid (CB:0.6, CF:0.4)",
+    "best_f1_score": 0.4250000000000001
+  }
+}

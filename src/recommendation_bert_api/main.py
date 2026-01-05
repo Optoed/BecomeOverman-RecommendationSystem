@@ -103,7 +103,7 @@ async def add_quests(request: AddQuestsRequest):
         embeddings = app.state.model.encode(
             quest_texts,
             convert_to_tensor=True,
-            show_progress_bar=True
+            show_progress_bar=False  # <-- ОТКЛЮЧАЕМ ПРОГРЕСС БАР
         )
 
         # Сохраняем в кэш эмбеддинги
@@ -206,7 +206,8 @@ async def search(request: SearchRequest) -> SearchResponse:
         # Кодируем запрос
         query_embedding = app.state.model.encode(
             request.query,
-            convert_to_tensor=True
+            convert_to_tensor=True,
+            show_progress_bar=False  # <-- ОТКЛЮЧАЕМ ПРОГРЕСС БАР
         )
 
         # Сравниваем со всеми квестами
@@ -439,7 +440,11 @@ async def syncDB():
                 text += f". {category}"
 
             # Создаем эмбеддинг
-            embedding = app.state.model.encode(text, convert_to_tensor=True)
+            embedding = app.state.model.encode(
+                text,
+                convert_to_tensor=True,
+                show_progress_bar=False  # <-- ОТКЛЮЧАЕМ ПРОГРЕСС БАР
+            )
             # Сохраняем в SQLite
             quest = Quest(
                 id=quest_id,
