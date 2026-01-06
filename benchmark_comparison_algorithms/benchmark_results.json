@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-01-05 23:40:48",
+  "timestamp": "2026-01-06 10:50:19",
   "config": {
     "total_quests": 27,
     "total_users": 50,
@@ -15,26 +15,26 @@
         "description": "Контентная фильтрация на основе BERT эмбеддингов"
       },
       "metrics": {
-        "precision@k": 0.7500000000000002,
-        "precision@k_std": 0.1774823934929885,
-        "recall@k": 0.25,
-        "recall@k_std": 0.059160797830996155,
-        "f1@k": 0.3750000000000001,
-        "f1@k_std": 0.08874119674649425,
-        "ndcg@k": 0.7868094730136682,
-        "ndcg@k_std": 0.17787070790254958,
-        "map@k": 0.6871666666666668,
-        "map@k_std": 0.22269379824722954
+        "precision@k": 0.53,
+        "precision@k_std": 0.28478061731796284,
+        "recall@k": 0.88125,
+        "recall@k_std": 0.30484370995643,
+        "f1@k": 0.6289377289377289,
+        "f1@k_std": 0.2772388471064162,
+        "ndcg@k": 0.9,
+        "ndcg@k_std": 0.30000000000000004,
+        "map@k": 0.9,
+        "map@k_std": 0.30000000000000004
       },
       "friend_metrics": {
-        "friend_precision@k": 0.4333333333333333,
-        "friend_precision@k_std": 0.21343747458109494,
-        "friend_recall@k": 0.26,
-        "friend_recall@k_std": 0.12806248474865697,
-        "friend_f1@k": 0.325,
-        "friend_f1@k_std": 0.16007810593582122,
-        "friend_map@k": 0.2666666666666666,
-        "friend_map@k_std": 0.19212907184211755
+        "friend_precision@k": 1.0,
+        "friend_precision@k_std": 0.0,
+        "friend_recall@k": 0.29999999999999993,
+        "friend_recall@k_std": 5.551115123125783e-17,
+        "friend_f1@k": 0.4615384615384615,
+        "friend_f1@k_std": 0.0,
+        "friend_map@k": 1.0,
+        "friend_map@k_std": 0.0
       }
     },
     "Collaborative KNN (k=5)": {
@@ -45,26 +45,26 @@
         "description": "Коллаборативная фильтрация на основе пользовательских предпочтений"
       },
       "metrics": {
-        "precision@k": 0.56,
-        "precision@k_std": 0.30724582991474436,
-        "recall@k": 0.18666666666666665,
-        "recall@k_std": 0.10241527663824812,
-        "f1@k": 0.28,
-        "f1@k_std": 0.15362291495737218,
-        "ndcg@k": 0.6380550913374685,
-        "ndcg@k_std": 0.28269364120485885,
-        "map@k": 0.5405,
-        "map@k_std": 0.31331254363654193
+        "precision@k": 0.1,
+        "precision@k_std": 0.161245154965971,
+        "recall@k": 0.19374999999999998,
+        "recall@k_std": 0.32174518687585335,
+        "f1@k": 0.11613247863247864,
+        "f1@k_std": 0.16981907341842015,
+        "ndcg@k": 0.21030716892474927,
+        "ndcg@k_std": 0.3426300831196236,
+        "map@k": 0.17729166666666668,
+        "map@k_std": 0.3217990741087087
       },
       "friend_metrics": {
-        "friend_precision@k": 0.4333333333333333,
-        "friend_precision@k_std": 0.3,
-        "friend_recall@k": 0.26,
-        "friend_recall@k_std": 0.18,
-        "friend_f1@k": 0.325,
-        "friend_f1@k_std": 0.22499999999999998,
-        "friend_map@k": 0.3277777777777777,
-        "friend_map@k_std": 0.28267898296019
+        "friend_precision@k": 1.0,
+        "friend_precision@k_std": 0.0,
+        "friend_recall@k": 0.29999999999999993,
+        "friend_recall@k_std": 5.551115123125783e-17,
+        "friend_f1@k": 0.4615384615384615,
+        "friend_f1@k_std": 0.0,
+        "friend_map@k": 1.0,
+        "friend_map@k_std": 0.0
       }
     },
     "Collaborative KNN (k=10)": {
@@ -75,26 +75,26 @@
         "description": "Коллаборативная фильтрация на основе пользовательских предпочтений"
       },
       "metrics": {
-        "precision@k": 0.7300000000000001,
-        "precision@k_std": 0.2215851980616034,
-        "recall@k": 0.24333333333333332,
-        "recall@k_std": 0.07386173268720111,
-        "f1@k": 0.36500000000000005,
-        "f1@k_std": 0.1107925990308017,
-        "ndcg@k": 0.7692483490526622,
-        "ndcg@k_std": 0.20865889595468878,
-        "map@k": 0.6733333333333332,
-        "map@k_std": 0.2579082524206363
+        "precision@k": 0.15000000000000002,
+        "precision@k_std": 0.18841443681416772,
+        "recall@k": 0.26249999999999996,
+        "recall@k_std": 0.3121108688342084,
+        "f1@k": 0.17243589743589743,
+        "f1@k_std": 0.18088474517382258,
+        "ndcg@k": 0.2496796194344464,
+        "ndcg@k_std": 0.3323280117689634,
+        "map@k": 0.1934861111111111,
+        "map@k_std": 0.32031898977165457
       },
       "friend_metrics": {
-        "friend_precision@k": 0.4333333333333333,
-        "friend_precision@k_std": 0.3,
-        "friend_recall@k": 0.26,
-        "friend_recall@k_std": 0.18,
-        "friend_f1@k": 0.325,
-        "friend_f1@k_std": 0.22499999999999998,
-        "friend_map@k": 0.3277777777777777,
-        "friend_map@k_std": 0.28267898296019
+        "friend_precision@k": 1.0,
+        "friend_precision@k_std": 0.0,
+        "friend_recall@k": 0.29999999999999993,
+        "friend_recall@k_std": 5.551115123125783e-17,
+        "friend_f1@k": 0.4615384615384615,
+        "friend_f1@k_std": 0.0,
+        "friend_map@k": 1.0,
+        "friend_map@k_std": 0.0
       }
     },
     "Hybrid (CB:0.5, CF:0.5)": {
@@ -106,26 +106,26 @@
         "description": "Гибридный алгоритм, объединяющий контентную и коллаборативную фильтрацию"
       },
       "metrics": {
-        "precision@k": 0.82,
-        "precision@k_std": 0.1661324772583615,
-        "recall@k": 0.2733333333333333,
-        "recall@k_std": 0.055377492419453826,
-        "f1@k": 0.41,
-        "f1@k_std": 0.08306623862918075,
-        "ndcg@k": 0.8411402360397308,
-        "ndcg@k_std": 0.17913298985687676,
-        "map@k": 0.7665,
-        "map@k_std": 0.2324733557014892
+        "precision@k": 0.4000000000000001,
+        "precision@k_std": 0.2280350850198276,
+        "recall@k": 0.6691666666666666,
+        "recall@k_std": 0.333094706252341,
+        "f1@k": 0.47652319902319906,
+        "f1@k_std": 0.2376447622247888,
+        "ndcg@k": 0.5341544326438044,
+        "ndcg@k_std": 0.2988948559045833,
+        "map@k": 0.4259861111111111,
+        "map@k_std": 0.30016423584420954
       },
       "friend_metrics": {
-        "friend_precision@k": 0.39999999999999997,
-        "friend_precision@k_std": 0.24944382578492943,
-        "friend_recall@k": 0.24,
-        "friend_recall@k_std": 0.14966629547095767,
-        "friend_f1@k": 0.3,
-        "friend_f1@k_std": 0.18708286933869706,
-        "friend_map@k": 0.27777777777777773,
-        "friend_map@k_std": 0.2151657414559676
+        "friend_precision@k": 1.0,
+        "friend_precision@k_std": 0.0,
+        "friend_recall@k": 0.29999999999999993,
+        "friend_recall@k_std": 5.551115123125783e-17,
+        "friend_f1@k": 0.4615384615384615,
+        "friend_f1@k_std": 0.0,
+        "friend_map@k": 1.0,
+        "friend_map@k_std": 0.0
       }
     },
     "Hybrid (CB:0.6, CF:0.4)": {
@@ -137,26 +137,26 @@
         "description": "Гибридный алгоритм, объединяющий контентную и коллаборативную фильтрацию"
       },
       "metrics": {
-        "precision@k": 0.8,
-        "precision@k_std": 0.2,
-        "recall@k": 0.2666666666666667,
-        "recall@k_std": 0.06666666666666667,
-        "f1@k": 0.4,
-        "f1@k_std": 0.1,
-        "ndcg@k": 0.8261009770322731,
-        "ndcg@k_std": 0.20273104295523126,
-        "map@k": 0.7505000000000001,
-        "map@k_std": 0.2496047430995208
+        "precision@k": 0.45,
+        "precision@k_std": 0.2519920633670831,
+        "recall@k": 0.7670833333333332,
+        "recall@k_std": 0.3043489750452778,
+        "f1@k": 0.5356043956043957,
+        "f1@k_std": 0.24111905023987537,
+        "ndcg@k": 0.6066537192011847,
+        "ndcg@k_std": 0.2749769409798915,
+        "map@k": 0.5005694444444445,
+        "map@k_std": 0.2893164367586185
       },
       "friend_metrics": {
-        "friend_precision@k": 0.39999999999999997,
-        "friend_precision@k_std": 0.24944382578492943,
-        "friend_recall@k": 0.24,
-        "friend_recall@k_std": 0.14966629547095767,
-        "friend_f1@k": 0.3,
-        "friend_f1@k_std": 0.18708286933869706,
-        "friend_map@k": 0.27777777777777773,
-        "friend_map@k_std": 0.2151657414559676
+        "friend_precision@k": 1.0,
+        "friend_precision@k_std": 0.0,
+        "friend_recall@k": 0.29999999999999993,
+        "friend_recall@k_std": 5.551115123125783e-17,
+        "friend_f1@k": 0.4615384615384615,
+        "friend_f1@k_std": 0.0,
+        "friend_map@k": 1.0,
+        "friend_map@k_std": 0.0
       }
     },
     "Hybrid (CB:0.8, CF:0.2)": {
@@ -168,26 +168,26 @@
         "description": "Гибридный алгоритм, объединяющий контентную и коллаборативную фильтрацию"
       },
       "metrics": {
-        "precision@k": 0.79,
-        "precision@k_std": 0.19467922333931786,
-        "recall@k": 0.2633333333333333,
-        "recall@k_std": 0.06489307444643928,
-        "f1@k": 0.395,
-        "f1@k_std": 0.09733961166965893,
-        "ndcg@k": 0.8148383725978358,
-        "ndcg@k_std": 0.19019379072195045,
-        "map@k": 0.7283333333333334,
-        "map@k_std": 0.23791104780288505
+        "precision@k": 0.51,
+        "precision@k_std": 0.2643860813280457,
+        "recall@k": 0.85875,
+        "recall@k_std": 0.3036522476452298,
+        "f1@k": 0.6078266178266178,
+        "f1@k_std": 0.2601670564664438,
+        "ndcg@k": 0.8334122843582008,
+        "ndcg@k_std": 0.29489860970619514,
+        "map@k": 0.7874444444444444,
+        "map@k_std": 0.2992688827752242
       },
       "friend_metrics": {
-        "friend_precision@k": 0.39999999999999997,
-        "friend_precision@k_std": 0.24944382578492943,
-        "friend_recall@k": 0.24,
-        "friend_recall@k_std": 0.14966629547095767,
-        "friend_f1@k": 0.3,
-        "friend_f1@k_std": 0.18708286933869706,
-        "friend_map@k": 0.26666666666666666,
-        "friend_map@k_std": 0.22194427061597974
+        "friend_precision@k": 1.0,
+        "friend_precision@k_std": 0.0,
+        "friend_recall@k": 0.29999999999999993,
+        "friend_recall@k_std": 5.551115123125783e-17,
+        "friend_f1@k": 0.4615384615384615,
+        "friend_f1@k_std": 0.0,
+        "friend_map@k": 1.0,
+        "friend_map@k_std": 0.0
       }
     },
     "Simple TF-IDF": {
@@ -198,33 +198,33 @@
         "description": "Простой алгоритм на основе TF-IDF векторизации"
       },
       "metrics": {
-        "precision@k": 0.78,
-        "precision@k_std": 0.1777638883463118,
+        "precision@k": 0.14,
+        "precision@k_std": 0.16852299546352717,
         "recall@k": 0.26,
-        "recall@k_std": 0.05925462944877058,
-        "f1@k": 0.39,
-        "f1@k_std": 0.0888819441731559,
-        "ndcg@k": 0.7845191342246871,
-        "ndcg@k_std": 0.18621303139278106,
-        "map@k": 0.6891666666666667,
-        "map@k_std": 0.2495615599851512
+        "recall@k_std": 0.3530974055098363,
+        "f1@k": 0.16705128205128206,
+        "f1@k_std": 0.2027217686736982,
+        "ndcg@k": 0.23521640406337588,
+        "ndcg@k_std": 0.34335167973464054,
+        "map@k": 0.18763888888888888,
+        "map@k_std": 0.33420513886785014
       },
       "friend_metrics": {
-        "friend_precision@k": 0.4333333333333333,
-        "friend_precision@k_std": 0.3,
-        "friend_recall@k": 0.26,
-        "friend_recall@k_std": 0.18,
-        "friend_f1@k": 0.325,
-        "friend_f1@k_std": 0.22499999999999998,
-        "friend_map@k": 0.3111111111111111,
-        "friend_map@k_std": 0.28674417556808757
+        "friend_precision@k": 1.0,
+        "friend_precision@k_std": 0.0,
+        "friend_recall@k": 0.29999999999999993,
+        "friend_recall@k_std": 5.551115123125783e-17,
+        "friend_f1@k": 0.4615384615384615,
+        "friend_f1@k_std": 0.0,
+        "friend_map@k": 1.0,
+        "friend_map@k_std": 0.0
       }
     }
   },
   "summary": {
-    "best_algorithm": "Hybrid (CB:0.5, CF:0.5)",
-    "best_f1_score": 0.41,
+    "best_algorithm": "Content-Based BERT",
+    "best_f1_score": 0.6289377289377289,
     "best_friend_algorithm": "Content-Based BERT",
-    "best_friend_f1_score": 0.325
+    "best_friend_f1_score": 0.4615384615384615
   }
 }

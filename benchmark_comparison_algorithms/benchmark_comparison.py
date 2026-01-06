@@ -916,38 +916,43 @@ class TestDataGenerator:
 
     @staticmethod
     def create_ground_truth(users: List[TestUser], quests: List[TestQuest]) -> Dict[int, List[int]]:
-        """Создание ground truth для оценки (основано на интересах пользователей)"""
+        """Создание продвинутого ground truth с учетом семантики"""
 
         ground_truth = {}
 
+        # Используем BERT для семантического ground truth
+        model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+
+        # Эмбеддинги квестов
+        quest_embeddings = {}
+        for quest in quests:
+            text = f"{quest.title}. {quest.description}. {quest.category}"
+            quest_embeddings[quest.id] = model.encode(text, convert_to_tensor=True, show_progress_bar=False)
+
         for user in users:
             relevant_quests = []
-            preferred_cats = set(user.preferred_categories)
-            completed_quests = set(user.quests)
+            user_quests = set(user.quests)
 
-            # 1. Квесты в предпочитаемых категориях (самая сильная сигнатура)
-            for quest in quests:
-                if (quest.category in preferred_cats and
-                        quest.id not in completed_quests):
-                    relevant_quests.append(quest.id)
+            if user.quests:
+                # 1. Эмбеддинг профиля пользователя
+                user_embeddings = []
+                for quest_id in user.quests:
+                    if quest_id in quest_embeddings:
+                        user_embeddings.append(quest_embeddings[quest_id])
 
-            # 2. Если у пользователя мало истории, добавляем квесты из похожих категорий
-            if len(relevant_quests) < 10:
-                # Находим похожие категории
-                all_categories = list(set(q.category for q in quests))
-                for quest in quests:
-                    if (quest.category not in preferred_cats and
-                            quest.id not in completed_quests and
-                            quest.id not in relevant_quests and
-                            len(relevant_quests) < 15):
-                        relevant_quests.append(quest.id)
+                if user_embeddings:
+                    user_embedding = torch.stack(user_embeddings).mean(dim=0)
 
-            # Ограничиваем количество релевантных квестов и перемешиваем
-            if relevant_quests:
-                ground_truth[user.id] = random.sample(relevant_quests,
-                                                      min(15, len(relevant_quests)))
-            else:
-                ground_truth[user.id] = []
+                    # 2. Находим семантически похожие квесты
+                    for quest_id, quest_embedding in quest_embeddings.items():
+                        if quest_id not in user_quests:
+                            similarity = util.cos_sim(user_embedding, quest_embedding).item()
+                            if similarity > 0.5:  # Порог схожести
+                                relevant_quests.append((quest_id, similarity))
+
+            # 3. Сортируем по схожести
+            relevant_quests.sort(key=lambda x: x[1], reverse=True)
+            ground_truth[user.id] = [qid for qid, _ in relevant_quests[:15]]  # Топ-15
 
         return ground_truth
 
@@ -958,26 +963,40 @@ class TestDataGenerator:
         ground_truth = {}
 
         for user in users:
-            similar_users = []
-            user_categories = set(user.preferred_categories)
+            similarities = []
             user_quests = set(user.quests)
+            user_categories = set(user.preferred_categories)
 
             for other_user in users:
                 if other_user.id == user.id:
                     continue
 
+                other_quests = set(other_user.quests)
                 other_categories = set(other_user.preferred_categories)
+
+                # 1. Общие квесты (самый сильный сигнал)
+                common_quests = len(user_quests & other_quests)
+
+                # 2. Общие категории интересов
                 common_categories = len(user_categories & other_categories)
 
-                # Если есть хотя бы 1 общая категория интересов
-                if common_categories > 0:
-                    similar_users.append(other_user.id)
+                # 3. Jaccard similarity по квестам
+                if user_quests or other_quests:
+                    jaccard_similarity = len(user_quests & other_quests) / len(user_quests | other_quests)
+                else:
+                    jaccard_similarity = 0
 
-            # Ограничиваем количество
-            if similar_users:
-                ground_truth[user.id] = random.sample(similar_users, min(5, len(similar_users)))
-            else:
-                ground_truth[user.id] = []
+                # Комбинированный скоринг
+                score = (common_quests * 0.5 +
+                         common_categories * 0.3 +
+                         jaccard_similarity * 0.2)
+
+                if score > 0.1:  # Порог
+                    similarities.append((other_user.id, score))
+
+            # Сортируем и берем топ
+            similarities.sort(key=lambda x: x[1], reverse=True)
+            ground_truth[user.id] = [uid for uid, _ in similarities[:10]]
 
         return ground_truth
 
