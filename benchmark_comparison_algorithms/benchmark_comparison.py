@@ -57,6 +57,10 @@ class BaseRecommender:
         """Рекомендация квестов для пользователя"""
         raise NotImplementedError
 
+    def recommend_friends(self, user_id: int, top_k: int = 10) -> tuple[List[Dict[str, Any]], float]:
+        """Рекомендация друзей (похожих пользователей)"""
+        raise NotImplementedError
+
     def search_quests(self, query: str, top_k: int = 10) -> List[Dict[str, Any]]:
         """Поиск квестов по запросу"""
         raise NotImplementedError
@@ -168,6 +172,66 @@ class ContentBasedBERT(BaseRecommender):
 
         return results[:top_k], execution_time
 
+    def recommend_friends(self, user_id: int, top_k: int = 10) -> tuple[List[Dict[str, Any]], float]:
+        """Рекомендация друзей на основе схожести профилей пользователей"""
+        start_time = time.time()
+
+        if user_id not in self.user_profiles:
+            return [], 0
+
+        user_profile = self.user_profiles[user_id]
+        user_quests = set(self.users[user_id].quests)
+
+        results = []
+        for other_user_id, other_profile in self.user_profiles.items():
+            if other_user_id == user_id:
+                continue
+
+            # Вычисляем схожесть профилей
+            similarity = util.cos_sim(user_profile, other_profile).item()
+
+            # Получаем информацию о другом пользователе
+            other_user = self.users[other_user_id]
+            other_quests = set(other_user.quests)
+
+            # Находим общие квесты
+            common_quests = list(user_quests & other_quests)
+            common_categories = len(set(self.users[user_id].preferred_categories) &
+                                    set(other_user.preferred_categories))
+
+            results.append({
+                "user_id": other_user_id,
+                "similarity_score": similarity,
+                "common_quests_count": len(common_quests),
+                "common_categories_count": common_categories,
+                "quests_count": len(other_user.quests),
+                "explanation": self._generate_friend_explanation(similarity, len(common_quests), common_categories)
+            })
+
+        results.sort(key=lambda x: x["similarity_score"], reverse=True)
+        execution_time = (time.time() - start_time) * 1000
+
+        return results[:top_k], execution_time
+
+    def _generate_friend_explanation(self, similarity: float, common_quests: int, common_categories: int) -> str:
+        """Генерация объяснения рекомендации друга"""
+        explanations = []
+
+        if similarity > 0.8:
+            explanations.append("очень высокая схожесть интересов")
+        elif similarity > 0.6:
+            explanations.append("высокая схожесть интересов")
+        elif similarity > 0.4:
+            explanations.append("умеренная схожесть интересов")
+
+        if common_quests > 0:
+            explanations.append(f"{common_quests} общих квестов")
+
+        if common_categories > 0:
+            explanations.append(f"{common_categories} общих категорий интересов")
+
+        return ", ".join(explanations) if explanations else "схожесть по интересам"
+
     def get_algorithm_info(self) -> Dict[str, Any]:
         return {
             "name": self.name,
@@ -268,6 +332,51 @@ class CollaborativeFilteringKNN(BaseRecommender):
 
         return results[:top_k], execution_time
 
+    def recommend_friends(self, user_id: int, top_k: int = 10) -> tuple[List[Dict[str, Any]], float]:
+        """Рекомендация друзей на основе коллаборативной фильтрации"""
+        start_time = time.time()
+
+        if user_id not in self.user_ids:
+            return [], 0
+
+        user_idx = self.user_ids.index(user_id)
+        user_quests = set(self.users[user_id].quests)
+
+        # Находим похожих пользователей
+        distances, indices = self.knn_model.kneighbors(
+            self.user_quest_matrix[user_idx].reshape(1, -1),
+            n_neighbors=min(self.n_neighbors + 1, len(self.user_ids))
+        )
+
+        results = []
+        for i, neighbor_idx in enumerate(indices[0]):
+            if i == 0:  # Пропускаем самого себя
+                continue
+
+            neighbor_id = self.user_ids[neighbor_idx]
+            neighbor_user = self.users[neighbor_id]
+            neighbor_quests = set(neighbor_user.quests)
+
+            similarity = 1 - distances[0][i]  # Косинусная схожесть
+            common_quests = list(user_quests & neighbor_quests)
+            common_categories = len(set(self.users[user_id].preferred_categories) &
+                                    set(neighbor_user.preferred_categories))
+
+            results.append({
+                "user_id": neighbor_id,
+                "similarity_score": float(similarity),
+                "common_quests_count": len(common_quests),
+                "common_categories_count": common_categories,
+                "quests_count": len(neighbor_user.quests),
+                "method": "collaborative_filtering",
+                "explanation": f"Схожесть по предпочтениям: {similarity:.2f}"
+            })
+
+        results.sort(key=lambda x: x["similarity_score"], reverse=True)
+        execution_time = (time.time() - start_time) * 1000
+
+        return results[:top_k], execution_time
+
     def search_quests(self, query: str, top_k: int = 10) -> tuple[list[Any], int]:
         # Для коллаборативной фильтрации поиск не реализован
         return [], 0
@@ -345,6 +454,57 @@ class HybridRecommender(BaseRecommender):
                 })
 
         execution_time = (time.time() - start_time) * 1000  # мс
+
+        return results[:top_k], execution_time
+
+    def recommend_friends(self, user_id: int, top_k: int = 10) -> tuple[List[Dict[str, Any]], float]:
+        """Гибридные рекомендации друзей"""
+        start_time = time.time()
+
+        # Получаем рекомендации от обоих алгоритмов
+        content_friends, _ = self.content_recommender.recommend_friends(user_id, top_k * 2)
+        collaborative_friends, _ = self.collaborative_recommender.recommend_friends(user_id, top_k * 2)
+
+        # Нормализуем скоры
+        content_scores = {r["user_id"]: r["similarity_score"] for r in content_friends}
+        collaborative_scores = {r["user_id"]: r["similarity_score"] for r in collaborative_friends}
+
+        # Масштабируем скоры к [0, 1]
+        if content_scores:
+            max_content = max(content_scores.values())
+            if max_content > 0:
+                content_scores = {k: v / max_content for k, v in content_scores.items()}
+
+        if collaborative_scores:
+            max_collab = max(collaborative_scores.values())
+            if max_collab > 0:
+                collaborative_scores = {k: v / max_collab for k, v in collaborative_scores.items()}
+
+        # Объединяем скоры с весами
+        combined_scores = defaultdict(float)
+
+        for user_id_, score in content_scores.items():
+            combined_scores[user_id_] += score * self.content_weight
+
+        for user_id_, score in collaborative_scores.items():
+            combined_scores[user_id_] += score * self.collaborative_weight
+
+        # Формируем результаты
+        results = []
+        for friend_id, score in sorted(combined_scores.items(), key=lambda x: x[1], reverse=True):
+            if friend_id in self.users:
+                friend_user = self.users[friend_id]
+                results.append({
+                    "user_id": friend_id,
+                    "similarity_score": score,
+                    "quests_count": len(friend_user.quests),
+                    "content_score": content_scores.get(friend_id, 0),
+                    "collaborative_score": collaborative_scores.get(friend_id, 0),
+                    "method": "hybrid",
+                    "explanation": f"Гибридная схожесть: контент={content_scores.get(friend_id, 0):.2f}, коллаб={collaborative_scores.get(friend_id, 0):.2f}"
+                })
+
+        execution_time = (time.time() - start_time) * 1000
 
         return results[:top_k], execution_time
 
@@ -464,6 +624,82 @@ class SimpleTfidfRecommender(BaseRecommender):
             })
 
         execution_time = (time.time() - start_time) * 1000  # мс
+        return results, execution_time
+
+    def recommend_friends(self, user_id: int, top_k: int = 10) -> tuple[List[Dict[str, Any]], float]:
+        """Рекомендация друзей на основе TF-IDF профилей"""
+        start_time = time.time()
+
+        if user_id not in self.users:
+            return [], 0
+
+        user = self.users[user_id]
+        user_quests = set(user.quests)
+
+        # Получаем TF-IDF профиль пользователя
+        user_quest_indices = []
+        for quest_id in user.quests:
+            if quest_id in self.quest_ids:
+                user_quest_indices.append(self.quest_ids.index(quest_id))
+
+        if not user_quest_indices:
+            return [], 0
+
+        # Создаем профиль пользователя
+        user_vectors = self.tfidf_matrix[user_quest_indices]
+        user_vector = user_vectors.mean(axis=0)
+        user_vector = np.asarray(user_vector).reshape(1, -1)
+
+        # Создаем KNN для пользователей
+        user_profiles = []
+        user_ids_for_knn = []
+
+        for u_id, u in self.users.items():
+            if u_id == user_id:
+                continue
+
+            u_quest_indices = []
+            for quest_id in u.quests:
+                if quest_id in self.quest_ids:
+                    u_quest_indices.append(self.quest_ids.index(quest_id))
+
+            if u_quest_indices:
+                u_vectors = self.tfidf_matrix[u_quest_indices]
+                u_vector = u_vectors.mean(axis=0)
+                u_vector = np.asarray(u_vector).reshape(1, -1)
+                user_profiles.append(u_vector.flatten())
+                user_ids_for_knn.append(u_id)
+
+        if not user_profiles:
+            return [], 0
+
+        user_profiles_np = np.array(user_profiles)
+        user_knn = NearestNeighbors(n_neighbors=min(top_k, len(user_profiles_np)), metric='cosine')
+        user_knn.fit(user_profiles_np)
+
+        # Ищем похожих пользователей
+        distances, indices = user_knn.kneighbors(user_vector, n_neighbors=min(top_k, len(user_profiles_np)))
+
+        results = []
+        for distance, idx in zip(distances[0], indices[0]):
+            friend_id = user_ids_for_knn[idx]
+            friend_user = self.users[friend_id]
+            friend_quests = set(friend_user.quests)
+
+            common_quests = list(user_quests & friend_quests)
+            common_categories = len(set(user.preferred_categories) & set(friend_user.preferred_categories))
+
+            results.append({
+                "user_id": friend_id,
+                "similarity_score": float(1 - distance),
+                "common_quests_count": len(common_quests),
+                "common_categories_count": common_categories,
+                "quests_count": len(friend_user.quests),
+                "method": "tfidf",
+                "explanation": f"TF-IDF схожесть профилей: {1 - distance:.2f}"
+            })
+
+        execution_time = (time.time() - start_time) * 1000
         return results, execution_time
 
     def get_algorithm_info(self) -> Dict[str, Any]:
@@ -715,6 +951,35 @@ class TestDataGenerator:
 
         return ground_truth
 
+    @staticmethod
+    def create_friends_ground_truth(users: List[TestUser]) -> Dict[int, List[int]]:
+        """Создание ground truth для друзей (основано на интересах)"""
+
+        ground_truth = {}
+
+        for user in users:
+            similar_users = []
+            user_categories = set(user.preferred_categories)
+            user_quests = set(user.quests)
+
+            for other_user in users:
+                if other_user.id == user.id:
+                    continue
+
+                other_categories = set(other_user.preferred_categories)
+                common_categories = len(user_categories & other_categories)
+
+                # Если есть хотя бы 1 общая категория интересов
+                if common_categories > 0:
+                    similar_users.append(other_user.id)
+
+            # Ограничиваем количество
+            if similar_users:
+                ground_truth[user.id] = random.sample(similar_users, min(5, len(similar_users)))
+            else:
+                ground_truth[user.id] = []
+
+        return ground_truth
 
 class BenchmarkEvaluator:
     """Оценщик алгоритмов рекомендаций"""
@@ -833,6 +1098,60 @@ class BenchmarkEvaluator:
 
         return results
 
+    def evaluate_friends(self, recommendations: Dict[int, List[int]],
+                         ground_truth: Dict[int, List[int]],
+                         top_k: int = 5) -> Dict[str, float]:
+        """Оценка рекомендаций друзей"""
+
+        metrics = {
+            "friend_precision@k": [],
+            "friend_recall@k": [],
+            "friend_f1@k": [],
+            "friend_map@k": []
+        }
+
+        for user_id, user_recommendations in recommendations.items():
+            if user_id not in ground_truth:
+                continue
+
+            true_friends = set(ground_truth[user_id])
+            recommended = user_recommendations[:top_k]
+
+            # Precision@K
+            hits = len(set(recommended) & true_friends)
+            precision = hits / top_k if top_k > 0 else 0
+            metrics["friend_precision@k"].append(precision)
+
+            # Recall@K
+            recall = hits / len(true_friends) if true_friends else 0
+            metrics["friend_recall@k"].append(recall)
+
+            # F1@K
+            f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+            metrics["friend_f1@k"].append(f1)
+
+            # Average Precision@K
+            ap = 0
+            num_hits = 0
+            for i, friend_id in enumerate(recommended):
+                if friend_id in true_friends:
+                    num_hits += 1
+                    ap += num_hits / (i + 1)
+            ap = ap / min(len(true_friends), top_k) if true_friends else 0
+            metrics["friend_map@k"].append(ap)
+
+        # Усредняем метрики
+        results = {}
+        for metric_name, values in metrics.items():
+            if values:
+                results[metric_name] = np.mean(values)
+                results[f"{metric_name}_std"] = np.std(values)
+            else:
+                results[metric_name] = 0
+                results[f"{metric_name}_std"] = 0
+
+        return results
+
 
 def run_comprehensive_benchmark():
     """Запуск комплексного бенчмарка всех алгоритмов"""
@@ -946,7 +1265,58 @@ def run_comprehensive_benchmark():
         logger.info(
             f"  Среднее время поиска: {avg_search_time:.2f} мс" if search_times else "  Поиск не поддерживается")
 
-    # 6. Оцениваем качество рекомендаций
+        # 6. Запускаем тесты рекомендаций друзей
+    logger.info("\n" + "=" * 60)
+    logger.info("ТЕСТИРОВАНИЕ РЕКОМЕНДАЦИЙ ДРУЗЕЙ")
+    logger.info("=" * 60)
+
+    friends_ground_truth = TestDataGenerator.create_friends_ground_truth(users)
+    friends_recommendation_results = {}
+
+    for algo in algorithms:
+        logger.info(f"\nТестируем алгоритм: {algo.name}")
+
+        if not hasattr(algo, 'recommend_friends'):
+            logger.info("  Рекомендации друзей не поддерживаются")
+            continue
+
+        # Тестирование рекомендаций друзей
+        user_friend_recommendations = {}
+        friend_recommendation_times = []
+
+        for user in users[:10]:  # Тестируем на 10 пользователях
+            try:
+                recommendations, exec_time = algo.recommend_friends(user.id, top_k=5)
+                user_friend_recommendations[user.id] = [r["user_id"] for r in recommendations]
+                friend_recommendation_times.append(exec_time)
+            except Exception as e:
+                logger.warning(f"  Ошибка рекомендаций друзей для пользователя {user.id}: {e}")
+                user_friend_recommendations[user.id] = []
+
+        friends_recommendation_results[algo.name] = user_friend_recommendations
+
+        avg_friend_time = np.mean(friend_recommendation_times) if friend_recommendation_times else 0
+        logger.info(f"  Среднее время рекомендации друзей: {avg_friend_time:.2f} мс")
+
+    # 7. Оцениваем качество рекомендаций друзей
+    logger.info("\n" + "=" * 60)
+    logger.info("ОЦЕНКА КАЧЕСТВА РЕКОМЕНДАЦИЙ ДРУЗЕЙ")
+    logger.info("=" * 60)
+
+    evaluator = BenchmarkEvaluator(ground_truth)  # Можно передать любую ground truth
+
+    friends_metrics = {}
+    for algo_name, recommendations in friends_recommendation_results.items():
+        if recommendations:
+            metrics = evaluator.evaluate_friends(recommendations, friends_ground_truth, top_k=3)
+            friends_metrics[algo_name] = metrics
+
+            logger.info(f"\n{algo_name}:")
+            for metric_name, value in metrics.items():
+                if "std" not in metric_name:
+                    logger.info(f"  {metric_name}: {value:.4f}")
+
+    # 8. Оцениваем качество рекомендаций
     logger.info("\n" + "=" * 60)
     logger.info("ОЦЕНКА КАЧЕСТВА РЕКОМЕНДАЦИЙ")
     logger.info("=" * 60)
@@ -963,7 +1333,7 @@ def run_comprehensive_benchmark():
             if "std" not in metric_name:
                 logger.info(f"  {metric_name}: {value:.4f}")
 
-    # 7. Оцениваем качество поиска
+    # 9. Оцениваем качество поиска
     logger.info("\n" + "=" * 60)
     logger.info("ОЦЕНКА КАЧЕСТВА ПОИСКА")
     logger.info("=" * 60)
@@ -975,21 +1345,21 @@ def run_comprehensive_benchmark():
             for metric_name, value in search_metrics.items():
                 logger.info(f"  {metric_name}: {value:.4f}")
 
-    # 8. Визуализация результатов
+    # 10. Визуализация результатов
     logger.info("\n" + "=" * 60)
     logger.info("ВИЗУАЛИЗАЦИЯ РЕЗУЛЬТАТОВ")
     logger.info("=" * 60)
 
     visualize_results(all_metrics, algorithms)
 
-    # 9. Сохранение результатов в файл
-    save_results_to_file(all_metrics, algorithms, quests, users)
+    # 11. Сохранение результатов в файл
+    save_results_to_file(all_metrics, friends_metrics, algorithms, quests, users)
 
     logger.info("\n" + "=" * 60)
     logger.info("БЕНЧМАРК ЗАВЕРШЕН УСПЕШНО!")
     logger.info("=" * 60)
 
-    return all_metrics
+    return all_metrics, friends_metrics
 
 
 def visualize_results(all_metrics: Dict[str, Dict[str, float]], algorithms: List[BaseRecommender]):
@@ -1114,6 +1484,7 @@ def visualize_results(all_metrics: Dict[str, Dict[str, float]], algorithms: List
 
 
 def save_results_to_file(all_metrics: Dict[str, Dict[str, float]],
+                         friends_metrics: Dict[str, Dict[str, float]],
                          algorithms: List[BaseRecommender],
                          quests: List[TestQuest],
                          users: List[TestUser]):
@@ -1139,6 +1510,10 @@ def save_results_to_file(all_metrics: Dict[str, Dict[str, float]],
                 "metrics": all_metrics[algo.name]
             }
 
+            # Добавляем метрики друзей, если они есть
+            if algo.name in friends_metrics:
+                results_data["algorithms"][algo.name]["friend_metrics"] = friends_metrics[algo.name]
+
     # Находим лучший алгоритм по F1-score
     best_algo = None
     best_f1 = 0
@@ -1150,6 +1525,19 @@ def save_results_to_file(all_metrics: Dict[str, Dict[str, float]],
 
     results_data["summary"]["best_algorithm"] = best_algo
     results_data["summary"]["best_f1_score"] = best_f1
+
+    # Находим лучший алгоритм для рекомендаций друзей
+    best_friend_algo = None
+    best_friend_f1 = 0
+
+    for algo_name, metrics in friends_metrics.items():
+        if "friend_f1@k" in metrics and metrics["friend_f1@k"] > best_friend_f1:
+            best_friend_f1 = metrics["friend_f1@k"]
+            best_friend_algo = algo_name
+
+    if best_friend_algo:
+        results_data["summary"]["best_friend_algorithm"] = best_friend_algo
+        results_data["summary"]["best_friend_f1_score"] = best_friend_f1
 
     with open('benchmark_results.json', 'w', encoding='utf-8') as f:
         json.dump(results_data, f, indent=2, ensure_ascii=False)
@@ -1168,10 +1556,10 @@ def save_results_to_file(all_metrics: Dict[str, Dict[str, float]],
         f.write(f"Количество тестовых пользователей: 20\n\n")
 
         f.write("=" * 80 + "\n")
-        f.write("РЕЗУЛЬТАТЫ СРАВНЕНИЯ\n")
+        f.write("РЕКОМЕНДАЦИИ КВЕСТОВ\n")
         f.write("=" * 80 + "\n\n")
 
-        # Таблица с результатами
+        # Таблица с результатами рекомендаций квестов
         f.write(f"{'Алгоритм':<40} {'P@5':<8} {'R@5':<8} {'F1@5':<8} {'NDCG@5':<8} {'MAP@5':<8}\n")
         f.write("-" * 80 + "\n")
 
@@ -1184,27 +1572,166 @@ def save_results_to_file(all_metrics: Dict[str, Dict[str, float]],
                     f"{metrics['map@k']:<8.3f}\n")
 
         f.write("\n" + "=" * 80 + "\n")
+        f.write("РЕКОМЕНДАЦИИ ДРУЗЕЙ\n")
+        f.write("=" * 80 + "\n\n")
+
+        if friends_metrics:
+            # Таблица с результатами рекомендаций друзей
+            f.write(f"{'Алгоритм':<40} {'P@5':<8} {'R@5':<8} {'F1@5':<8} {'MAP@5':<8}\n")
+            f.write("-" * 80 + "\n")
+
+            for algo_name, metrics in friends_metrics.items():
+                f.write(f"{algo_name:<40} "
+                        f"{metrics.get('friend_precision@k', 0):<8.3f} "
+                        f"{metrics.get('friend_recall@k', 0):<8.3f} "
+                        f"{metrics.get('friend_f1@k', 0):<8.3f} "
+                        f"{metrics.get('friend_map@k', 0):<8.3f}\n")
+        else:
+            f.write("Метрики рекомендаций друзей недоступны\n")
+
+        f.write("\n" + "=" * 80 + "\n")
         f.write("ВЫВОДЫ\n")
         f.write("=" * 80 + "\n\n")
 
-        f.write(f"Лучший алгоритм: {best_algo}\n")
-        f.write(f"Лучший F1-Score: {best_f1:.3f}\n\n")
+        f.write(f"Лучший алгоритм для рекомендаций квестов: {best_algo}\n")
+        f.write(f"Лучший F1-Score для квестов: {best_f1:.3f}\n\n")
+
+        if best_friend_algo:
+            f.write(f"Лучший алгоритм для рекомендаций друзей: {best_friend_algo}\n")
+            f.write(f"Лучший F1-Score для друзей: {best_friend_f1:.3f}\n\n")
+        else:
+            f.write("Алгоритмы рекомендаций друзей не тестировались\n\n")
+
+        # Детальный анализ каждого алгоритма
+        f.write("ДЕТАЛЬНЫЙ АНАЛИЗ АЛГОРИТМОВ:\n")
+        f.write("-" * 80 + "\n")
+
+        for algo_name, metrics in all_metrics.items():
+            f.write(f"\n{algo_name}:\n")
+            f.write(f"  Рекомендации квестов:\n")
+            f.write(f"    - Precision@5: {metrics['precision@k']:.3f}\n")
+            f.write(f"    - Recall@5: {metrics['recall@k']:.3f}\n")
+            f.write(f"    - F1@5: {metrics['f1@k']:.3f}\n")
+            f.write(f"    - NDCG@5: {metrics['ndcg@k']:.3f}\n")
+            f.write(f"    - MAP@5: {metrics['map@k']:.3f}\n")
+
+            if algo_name in friends_metrics:
+                friend_metrics = friends_metrics[algo_name]
+                f.write(f"  Рекомендации друзей:\n")
+                f.write(f"    - Precision@5: {friend_metrics.get('friend_precision@k', 0):.3f}\n")
+                f.write(f"    - Recall@5: {friend_metrics.get('friend_recall@k', 0):.3f}\n")
+                f.write(f"    - F1@5: {friend_metrics.get('friend_f1@k', 0):.3f}\n")
+                f.write(f"    - MAP@5: {friend_metrics.get('friend_map@k', 0):.3f}\n")
+
+            # Добавляем специфическую информацию об алгоритме
+            if "Content-Based BERT" in algo_name:
+                f.write(f"  Характеристики:\n")
+                f.write(f"    - Тип: Контентная фильтрация\n")
+                f.write(f"    - Модель: BERT (paraphrase-multilingual-MiniLM-L12-v2)\n")
+                f.write(f"    - Размер эмбеддингов: 384\n")
+                f.write(f"    - Подходит для: Понимание семантики текста, cold-start\n")
+            elif "Collaborative" in algo_name:
+                f.write(f"  Характеристики:\n")
+                f.write(f"    - Тип: Коллаборативная фильтрация\n")
+                f.write(f"    - Метод: K-Nearest Neighbors\n")
+                f.write(f"    - Подходит для: Социальные рекомендации, популярные тренды\n")
+            elif "Hybrid" in algo_name:
+                f.write(f"  Характеристики:\n")
+                f.write(f"    - Тип: Гибридный алгоритм\n")
+                f.write(f"    - Комбинация: Content-Based + Collaborative\n")
+                f.write(f"    - Подходит для: Баланс точности и разнообразия\n")
+            elif "TF-IDF" in algo_name:
+                f.write(f"  Характеристики:\n")
+                f.write(f"    - Тип: Контентная фильтрация\n")
+                f.write(f"    - Метод: TF-IDF векторизация\n")
+                f.write(f"    - Подходит для: Быстрые рекомендации, ограниченные ресурсы\n")
+
+        f.write("\n" + "=" * 80 + "\n")
+        f.write("РЕКОМЕНДАЦИИ ДЛЯ ДИПЛОМНОЙ РАБОТЫ\n")
+        f.write("=" * 80 + "\n\n")
 
         # Анализ результатов
         if "Content-Based BERT" in all_metrics:
             bert_f1 = all_metrics["Content-Based BERT"]["f1@k"]
-            f.write(f"Ваш алгоритм (Content-Based BERT):\n")
-            f.write(f"  - F1-Score: {bert_f1:.3f}\n")
-            f.write(
-                f"  - Позиция среди алгоритмов: {sorted([m['f1@k'] for m in all_metrics.values()], reverse=True).index(bert_f1) + 1}-е место\n")
-            f.write(f"  - Преимущества: Отлично работает с текстовыми описаниями, понимает семантику\n")
-            f.write(f"  - Недостатки: Требует вычислительных ресурсов для создания эмбеддингов\n\n")
+            bert_position = sorted([m['f1@k'] for m in all_metrics.values()], reverse=True).index(bert_f1) + 1
 
-        f.write("Примечание :\n")
-        f.write("1. Для продакшена рекомендуется использовать гибридный алгоритм\n")
-        f.write("2. Content-Based BERT хорошо подходит для cold-start ситуации\n")
-        f.write("3. Collaborative фильтрация эффективна при большом количестве данных\n")
-        f.write("4. TF-IDF может быть быстрой альтернативой при ограниченных ресурсах\n")
+            f.write("1. ВАШ АЛГОРИТМ (Content-Based BERT):\n")
+            f.write(f"   - Текущая позиция: {bert_position}-е место среди {len(all_metrics)} алгоритмов\n")
+            f.write(f"   - F1-Score: {bert_f1:.3f}\n")
+
+            # Сравнение с другими алгоритмами
+            if bert_position == 1:
+                f.write("   - ПРЕИМУЩЕСТВО: Ваш алгоритм показал лучший результат!\n")
+            elif bert_position <= 3:
+                f.write("   - РЕЗУЛЬТАТ: Хороший результат в топ-3\n")
+            else:
+                f.write("   - ЕСТЬ ВОЗМОЖНОСТИ ДЛЯ УЛУЧШЕНИЯ\n")
+
+            f.write("   - Преимущества:\n")
+            f.write("     * Отлично понимает семантику текстовых описаний\n")
+            f.write("     * Эффективен в cold-start ситуациях (новые пользователи)\n")
+            f.write("     * Хорошо работает с мультиязычным контентом\n")
+
+            f.write("   - Недостатки:\n")
+            f.write("     * Требует значительных вычислительных ресурсов\n")
+            f.write("     * Медленнее на больших объемах данных\n")
+            f.write("     * Зависит от качества текстовых описаний\n\n")
+
+        f.write("2. СРАВНИТЕЛЬНЫЙ АНАЛИЗ:\n")
+
+        # Находим топ-3 алгоритма для квестов
+        quest_sorted = sorted(all_metrics.items(), key=lambda x: x[1]["f1@k"], reverse=True)[:3]
+        f.write("   Топ-3 алгоритма для рекомендаций квестов:\n")
+        for i, (algo_name, metrics) in enumerate(quest_sorted, 1):
+            f.write(f"     {i}. {algo_name}: F1-Score = {metrics['f1@k']:.3f}\n")
+
+        if friends_metrics:
+            # Находим топ-3 алгоритма для друзей
+            friend_sorted = sorted(friends_metrics.items(),
+                                   key=lambda x: x[1].get("friend_f1@k", 0), reverse=True)[:3]
+            f.write("\n   Топ-3 алгоритма для рекомендаций друзей:\n")
+            for i, (algo_name, metrics) in enumerate(friend_sorted, 1):
+                f1 = metrics.get("friend_f1@k", 0)
+                f.write(f"     {i}. {algo_name}: F1-Score = {f1:.3f}\n")
+
+        f.write("\n3. ПРАКТИЧЕСКИЕ РЕКОМЕНДАЦИИ:\n")
+        f.write("   - Для продакшена: используйте гибридный алгоритм\n")
+        f.write("   - Для холодного старта: Content-Based BERT\n")
+        f.write("   - Для социальных рекомендаций: Collaborative Filtering\n")
+        f.write("   - Для ограниченных ресурсов: Simple TF-IDF\n")
+        f.write("   - Для поиска: BERT показывает лучшие результаты\n\n")
+
+        f.write("4. ПЕРСПЕКТИВЫ РАЗВИТИЯ:\n")
+        f.write("   - Добавить FAISS для ускорения поиска\n")
+        f.write("   - Реализовать A/B тестирование\n")
+        f.write("   - Добавить объяснения рекомендаций (Explainable AI)\n")
+        f.write("   - Оптимизировать для мобильных устройств\n")
+        f.write("   - Добавить мультимодальность (изображения, видео)\n")
+
+        f.write("\n" + "=" * 80 + "\n")
+        f.write("ТЕХНИЧЕСКИЕ ДЕТАЛИ\n")
+        f.write("=" * 80 + "\n\n")
+
+        f.write("Конфигурация тестирования:\n")
+        f.write(f"- Количество квестов: {len(quests)}\n")
+        f.write(f"- Количество пользователей: {len(users)}\n")
+        f.write(f"- Тестовые пользователи: 20\n")
+        f.write(f"- Рекомендаций на пользователя: 10 квестов, 5 друзей\n")
+        f.write(f"- Метрики оценки: Precision@K, Recall@K, F1-Score, NDCG, MAP\n")
+        f.write(f"- Аппаратное обеспечение: CPU\n")
+
+        # Информация об алгоритмах
+        f.write("\nПротестированные алгоритмы:\n")
+        for i, algo in enumerate(algorithms, 1):
+            info = algo.get_algorithm_info()
+            f.write(f"{i}. {info['name']}\n")
+            f.write(f"   Тип: {info.get('type', 'unknown')}\n")
+            f.write(f"   Описание: {info.get('description', '')}\n")
+            if 'model' in info:
+                f.write(f"   Модель: {info['model']}\n")
+            if 'n_neighbors' in info:
+                f.write(f"   K соседей: {info['n_neighbors']}\n")
+            f.write("\n")
 
     logger.info("Отчет сохранен в benchmark_report.txt")
 
@@ -1367,7 +1894,7 @@ def run_specific_tests():
 
 if __name__ == "__main__":
     # Запуск основного бенчмарка
-    main_results = run_comprehensive_benchmark()
+    main_results, friends_results = run_comprehensive_benchmark()
 
     # Запуск дополнительных тестов
     run_specific_tests()
